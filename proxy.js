@@ -88,5 +88,6 @@ console.log("Buffer length = " + buffer.length);
     });
 }
 
+console.log("Listening on port: " + 10080);
 http.createServer(runServer).listen(10080);
 
