@@ -1,93 +1,105 @@
 // simple http proxy
 
-var http = require('http'),
-    https = require('https'),
-    zlib = require('zlib'),
-    fs = require("fs");
+var http = require( 'http' ),
+    https = require( 'https' ),
+    zlib = require( 'zlib' ),
+    fs = require( "fs" ),
+    debug = false;
 
-function logHeaders(hdrObject) {
-    console.log("###################### HEADERS START ######################");
-    for ( hdr in hdrObject ) {
-            console.log("Header: " + hdr + " value = " + hdrObject[hdr]);
+function logMessage( msg ) {
+    if ( debug ) {
+        console.log( msg );
     }
-    console.log("######################  HEADERS END  ######################");
 }
 
-function runServer(request, response) {
+function logHeaders( hdrObject ) {
+    var hdr;
+    logMessage( "###################### HEADERS START ######################" );
+    for ( hdr in hdrObject ) {
+        logMessage( "Header: " + hdr + " value = " + hdrObject[ hdr ] );
+    }
+    logMessage( "######################  HEADERS END  ######################" );
+}
 
-    var client, proxy_req;
+function runServer( request, response ) {
 
-    // creates a http.Client
-    client = http.createClient(80, request.headers['host']);
+    var proxyRequest,
+        options = request.headers;
 
-    // return http.ClientRequest
-    proxy_req = client.request(request.method, request.url, request.headers);
+    logMessage( "Request headers: " + JSON.stringify( options ) );
 
-    proxy_req.addListener('response', function(proxy_resp) {
-                var content = "", isHTML = false, contentType;
+    options[ 'hostname' ] = options[ 'host' ];
+    options[ 'path' ] = request.url;
+    options[ 'method' ] = request.method;
 
-        contentType = proxy_resp.headers['content-type'];
-        if ( contentType && contentType.indexOf("text/html") != -1 ) {
+    proxyRequest = http.request( request.headers, function ( proxyResponse ) {
+        var content = "",
+            isHTML = false,
+            contentType;
+
+        logMessage( "GOT status: " + proxyResponse.statusCode + " headers: " + JSON.stringify( proxyResponse.headers ) );
+
+        contentType = proxyResponse.headers[ 'content-type' ];
+        if ( contentType && contentType.indexOf( "text/html" ) !== -1 ) {
             isHTML = true;
         }
-        proxy_resp.addListener('data', function(chunk) {
+        proxyResponse.on( 'data', function ( chunk ) {
             if ( isHTML ) {
-                if ( proxy_resp.headers['content-encoding'] === 'gzip' ) {
-                    zlib.gunzip(chunk, function(err, buffer) {
-                    content += buffer;
-                    response.write(chunk, 'binary');
-console.log("GZIP partial length = " + content.length + " " + (buffer?buffer.length:"") + " " + err);
-                    });
-                } else if ( proxy_resp.headers['content-encoding'] === 'deflate' ) {
-                    zlib.inflate(chunk, function(err, buffer) {
+                if ( proxyResponse.headers[ 'content-encoding' ] === 'gzip' ) {
+                    zlib.gunzip( chunk, function ( err, buffer ) {
                         content += buffer;
-                response.write(chunk, 'binary');
-                    });
+                        response.write( chunk, 'binary' );
+                        logMessage( "GZIP partial length = " + content.length + " " + ( buffer ? buffer.length : "" ) + " " + err );
+                    } );
+                } else if ( proxyResponse.headers[ 'content-encoding' ] === 'deflate' ) {
+                    zlib.inflate( chunk, function ( err, buffer ) {
+                        content += buffer;
+                        response.write( chunk, 'binary' );
+                    } );
                 } else {
-                        content += chunk;
-console.log("HTML that is not gzipped? " + chunk.length + " " + proxy_resp.statusCode);
+                    content += chunk;
+                    logMessage( "HTML that is not gzipped? " + chunk.length + " " + proxyResponse.statusCode );
                 }
             } else {
-                response.write(chunk, 'binary');
+                response.write( chunk, 'binary' );
             }
-        });
-        proxy_resp.addListener('end', function() {
+        } );
+        proxyResponse.on( 'end', function () {
             if ( isHTML && content ) {
-console.log("Content length = " + content.length);
-                if ( proxy_resp.headers['content-encoding'] === 'gzip' ) {
-                   zlib.gzip(content, function(err, buffer) {
-                     //response.write(buffer, 'binary');
-                     response.end();
-console.log("GZIP Buffer length = " + buffer.length);
-                   });
-               } else if ( proxy_resp.headers['content-encoding'] === 'deflate' ) {
-                   zlib.deflate(content, function(err, buffer) {
-                      //response.write(buffer, 'binary');
-                      response.end();
-console.log("Buffer length = " + buffer.length);
-                   });
-               } else {
-                   response.write(content, 'binary');
-                   response.end();
-               }
+                logMessage( "Content length = " + content.length );
+                if ( proxyResponse.headers[ 'content-encoding' ] === 'gzip' ) {
+                    zlib.gzip( content, function ( err, buffer ) {
+                        //response.write(buffer, 'binary');
+                        response.end();
+                        logMessage( "GZIP Buffer length = " + buffer.length );
+                    } );
+                } else if ( proxyResponse.headers[ 'content-encoding' ] === 'deflate' ) {
+                    zlib.deflate( content, function ( err, buffer ) {
+                        //response.write(buffer, 'binary');
+                        response.end();
+                        logMessage( "Buffer length = " + buffer.length );
+                    } );
+                } else {
+                    response.write( content, 'binary' );
+                    response.end();
+                }
             } else {
                 response.end();
             }
-        });
-        response.writeHead(proxy_resp.statusCode, proxy_resp.headers);
-/*
+        } );
+        response.writeHead( proxyResponse.statusCode, proxyResponse.headers );
+        /*
         logHeaders(request.headers);
-        logHeaders(proxy_resp.headers);
+        logHeaders(proxyResponse.headers);
 */
-    });
-    request.addListener('data', function(chunk) {
-        proxy_req.write(chunk, 'binary');
-    });
-    request.addListener('end', function() {
-        proxy_req.end();
-    });
+    } );
+    request.on( 'data', function ( chunk ) {
+        proxyRequest.write( chunk, 'binary' );
+    } );
+    request.on( 'end', function () {
+        proxyRequest.end();
+    } );
 }
 
-console.log("Listening on port: " + 10080);
-http.createServer(runServer).listen(10080);
-
+logMessage( "Listening on port: " + 10080 );
+http.createServer( runServer ).listen( 10080 );
