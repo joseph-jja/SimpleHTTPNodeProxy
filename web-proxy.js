@@ -10,7 +10,7 @@ var express = require('express'),
         cert: fs.readFileSync('temp/cert.pem')
     },
     debugLog = false,
-    proxyOriginHost = 'localhost.fds.com',
+    proxyOriginHost = 'localhost.com',
     proxyOriginPort = '9443',
     proxyOrigin = 'https://' + proxyOriginHost + ':' + proxyOriginPort;
 
@@ -37,7 +37,7 @@ app.use(bodyParser.urlencoded({
 //app.use(multer);
 
 app.use(function(req, res, next) {
-    res.cookie('macys_online_uid', '2158330976');
+    //res.cookie('somecookie', '12345');
     next();
 });
 
@@ -150,9 +150,6 @@ function processRequest(req, res) {
         })
     }
 }
-
-app.get(['/sns/*', '/img/*', '/chkout/*'], processRequest);
-app.post(['/chkout/shipping/*'], processRequest);
 
 app.get(['/*', '/#*'], express.static(__dirname + '/public'));
 
